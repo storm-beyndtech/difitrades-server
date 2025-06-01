@@ -201,7 +201,7 @@ router.put("/change-password", async (req, res) => {
 		const user = await User.findById(id);
 		if (!user) return res.status(404).send({ message: "User not found" });
 
-		const validPassword = await bcrypt.compare(currentPassword, user.password);
+		const validPassword = bcrypt.compare(currentPassword, user.password);
 		if (!validPassword) return res.status(400).send({ message: "Current password is incorrect" });
 
 		const salt = await bcrypt.genSalt(10);
