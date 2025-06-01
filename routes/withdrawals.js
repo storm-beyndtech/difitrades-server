@@ -1,7 +1,7 @@
-const express = require('express')
-const { Transaction } = require("../models/transaction")
-const { User } = require("../models/user")
-const { alertAdmin, withdrawalMail } = require("../utils/mailer")
+import express from 'express';
+import { Transaction } from '../models/transaction.js';
+import { User } from '../models/user.js';
+import { alertAdmin, withdrawalMail } from '../utils/mailer.js';
 
 
 const router  = express.Router()
@@ -101,7 +101,7 @@ router.put('/:id', async (req, res) => {
   const { email, amount, status } = req.body;
 
   let withdrawal = await Transaction.findById(id);
-  if (!withdrawal) return res.status(404).send({ message: 'Withdrawal not found' });
+  if (!withdrawal) return res.status(404).send({ message: 'Deposit not found' });
 
   let user = await User.findOne({ email });
   if (!user) return res.status(400).send({ message: 'Something went wrong' });
@@ -111,7 +111,6 @@ router.put('/:id', async (req, res) => {
 
     if (status === 'success') {
       user.withdraw += amount;
-      user.deposit -= amount;
     }
 
     user = await user.save()
@@ -131,7 +130,7 @@ router.put('/:id', async (req, res) => {
 
 
 
-module.exports = router;
+export default router;
 
 
 

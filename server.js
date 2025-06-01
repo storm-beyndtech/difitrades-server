@@ -1,51 +1,91 @@
-const express = require('express');
-const mongoose = require('mongoose');
+import dotenv from "dotenv";
+dotenv.config();
+import express from "express";
+import mongoose from "mongoose";
+import http from "http";
+import cors from "cors";
+import { verifyTransporter } from "./utils/emailConfig.js";
+import usersRoutes from "./routes/users.js";
+import transactionsRoutes from "./routes/transactions.js";
+import depositsRoutes from "./routes/deposits.js";
+import withdrawalsRoutes from "./routes/withdrawals.js";
+import tradesRoutes from "./routes/trades.js";
+import traderRoutes from "./routes/traders.js";
+import utilsRoutes from "./routes/utils.js";
+import kycsRoutes from "./routes/kycs.js";
+import rateLimit from "express-rate-limit";
+
 const app = express();
-const http = require('http');
 const server = http.createServer(app);
 
-const cors = require('cors');
-require('dotenv').config();
+// Verify transporter
+(async function verifyTP() {
+	await verifyTransporter();
+})();
 
-
-// checking for required ENV
+// Checking for required ENV variables
 if (!process.env.JWT_PRIVATE_KEY) {
-  console.log("Fatal Error: jwtPrivateKey is required");
-  process.exit(1);
+	console.error("Fatal Error: jwtPrivateKey is required");
+	process.exit(1);
 }
 
+// Connecting to MongoDB
+mongoose.set("strictQuery", false);
+mongoose
+	.connect(process.env.MONGODB_URL)
+	.then(() => console.log("Connected to MongoDB..."))
+	.catch((e) => console.error("Error connecting to MongoDB:", e));
 
-// connecting to MongoDB
-mongoose.set('strictQuery', false);
-mongoose.connect(process.env.MONGODB_URL)
-  .then(() => console.log("Connected to MongoDB..."))
-  .catch((e) => console.log("Error connecting to MongoDB"));
+const allowedOrigins = [
+	"https://difitrades.com",
+	"https://www.difitrades.com",
+	"https://difitrades-client.vercel.app",
+	"http://localhost:5173",
+];
 
+const corsOptions = {
+	origin: (origin, callback) => {
+		if (!origin || allowedOrigins.includes(origin)) {
+			callback(null, true);
+		} else {
+			callback(new Error("Not allowed by CORS"));
+		}
+	},
+	methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+	credentials: true,
+};
 
-// CORS middleware
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  next();
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // Preflight
+
+// Create a rate limiter for POST requests only
+const postLimiter = rateLimit({
+	windowMs: 15 * 60 * 1000, // 15 minutes
+	max: 10, // Limit each IP to 10 POST requests per 15 minutes
+	handler: (req, res) => {
+		res.status(429).json({
+			message: "Too many requests, please try again later.",
+		});
+	},
 });
 
-
-// middlewares
+// Middlewares
+app.post("*", postLimiter);
 app.use(cors());
 app.use(express.json());
-app.use("/api/users", require('./routes/users'));
-app.use("/api/transactions", require('./routes/transactions'));
-app.use("/api/deposits", require('./routes/deposits'));
-app.use("/api/withdrawals", require('./routes/withdrawals'));
-app.use("/api/trades", require('./routes/trades'));
-app.use("/api/utils", require("./routes/utils"));
-app.use("/api/kycs", require("./routes/kycs"));
+app.use("/api/users", usersRoutes);
+app.use("/api/transactions", transactionsRoutes);
+app.use("/api/deposits", depositsRoutes);
+app.use("/api/withdrawals", withdrawalsRoutes);
+app.use("/api/trades", tradesRoutes);
+app.use("/api/trader", traderRoutes);
+app.use("/api/utils", utilsRoutes);
+app.use("/api/kycs", kycsRoutes);
 
-// listening to port
-const PORT = !process.env.PORT ? 5000 : process.env.PORT;
+// Listening to port
+const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Listening on port ${PORT}`));
 
-
-app.get('/', (req, res) => {
-  res.header("Access-Control-Allow-Origin", "*").send('Yooo! API 💨💨💨 ');
+app.get("/", (req, res) => {
+	res.header("Access-Control-Allow-Origin", "*").send("API running 🥳");
 });
-

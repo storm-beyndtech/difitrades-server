@@ -1,149 +1,182 @@
-const express = require("express");
-const { Transaction } = require("../models/transaction");
-const { User } = require("../models/user");
-const { default: mongoose } = require("mongoose");
-const { tradeAlertMail } = require("../utils/mailer");
+import express from "express";
+import { Transaction } from "../models/transaction.js";
+import { User } from "../models/user.js";
+import mongoose from "mongoose";
+import { DemoTrade } from "../models/DemoTrade.js";
+import { Trader } from "../models/trader.js";
 
 const router = express.Router();
 
 router.get("/", async (req, res) => {
-  try {
-    const trades = await Transaction.find({ type: "trade" }).sort({
-      date: "asc",
-    });
-    res.send(trades);
-  } catch (error) {
-    console.error(error);
-    return res.status(500).send({ message: "Something Went Wrong..." });
-  }
+	try {
+		const trades = await Transaction.find({ type: "trade" }).sort({ date: "asc" });
+		res.send(trades);
+	} catch (error) {
+		console.error(error);
+		return res.status(500).send({ message: "Something Went Wrong..." });
+	}
 });
 
-// New route to get active trades for a particular user
-router.get("/user/:userId", async (req, res) => {
-  const { userId } = req.params;
-  try {
-    const activeTrades = await Transaction.find({
-      type: "trade",
-      status: "pending",
-      "user.id": userId,
-    }).sort({ date: "asc" });
-    res.send(activeTrades);
-  } catch (error) {
-    console.error(error);
-    return res.status(500).send({ message: "Something Went Wrong..." });
-  }
+//Get user trades
+router.get("/user/:userId/trader/:traderId", async (req, res) => {
+	try {
+		const { userId, traderId } = req.params;
+
+		// Validate ObjectIds
+		if (!userId || userId === "null" || userId === "undefined") {
+			return res.status(400).send({ message: "Invalid user ID" });
+		}
+
+		if (!traderId || traderId === "null" || traderId === "undefined") {
+			return res.status(400).send({ message: "Invalid trader ID" });
+		}
+
+		// Get user's createdAt date
+		const user = await User.findById(userId);
+		if (!user) {
+			return res.status(404).send({ message: "User not found" });
+		}
+
+		// Get trader to access their category
+		const trader = await Trader.findById(traderId);
+		if (!trader) {
+			return res.status(404).send({ message: "Trader not found" });
+		}
+
+		// Filter trades by trader's category and user creation date
+		const trades = await Transaction.find({
+			type: "trade",
+			"tradeData.category": trader.specialization,
+			date: { $gte: user.createdAt },
+		});
+
+		res.send(trades);
+	} catch (error) {
+		console.error(error);
+		return res.status(500).send({ message: "Something went wrong..." });
+	}
 });
 
-// creating a trade
-router.post("/user/:userId", async (req, res) => {
-  const { package, interest, amount } = req.body;
-  const userId = req.params.userId;
+// Get all demo trades for a user
+router.get("/demo-trades/:email", async (req, res) => {
+	try {
+		const { email } = req.params;
+		const trades = await DemoTrade.find({ email }).sort({ createdAt: -1 });
 
-  // Start a session
-  const session = await mongoose.startSession();
-  session.startTransaction();
+		res.status(200).json({ trades });
+	} catch (error) {
+		res.status(500).json({ message: error.message });
+	}
+});
 
-  try {
-    let user = await User.findById(userId).session(session);
-    if (!user) {
-      await session.abortTransaction();
-      return res.status(400).send({ message: "Something went wrong" });
-    }
+router.post("/create-demo-trade", async (req, res) => {
+	try {
+		const { email, symbol, marketDirection, amount, duration, profit } = req.body;
 
-    // Check if the user has enough deposit
-    if (user.deposit < amount) {
-      await session.abortTransaction();
-      return res.status(400).send({ message: "Insufficient deposit" });
-    }
+		const newTrade = await DemoTrade.create({
+			email,
+			symbol,
+			marketDirection,
+			amount,
+			duration,
+			profit,
+		});
 
-    // Create a new trade
-    const trade = new Transaction({
-      user: { id: userId, name: user.fullName, email: user.email },
-      tradeData: { package, interest },
-      type: "trade",
-      amount,
-    });
+		// Execute trade immediately
+		const user = await User.findOne({ email });
+		if (!user) {
+			return res.status(404).json({ message: "User not found" });
+		}
 
-    await trade.save({ session });
+		const win = Math.random() > 0.5;
+		const updatedBalance = win ? user.demo + profit : user.demo - amount;
 
-    // Subtract the trade amount from the user's deposit
-    user.deposit -= amount;
+		user.demo = updatedBalance;
+		await user.save();
 
-    // Save the updated user
-    await user.save({ session });
+		res.status(201).json({
+			message: "Trade created and executed",
+			trade: newTrade,
+			result: win ? "win" : "loss",
+			newBalance: updatedBalance,
+		});
+	} catch (error) {
+		res.status(500).json({ message: error.message });
+	}
+});
 
-    // Commit the transaction
-    await session.commitTransaction();
+// making a trade
+router.post("/", async (req, res) => {
+	const { symbol, interest, category } = req.body;
 
-    // Send trade email
-    await tradeAlertMail(package, amount, user.email);
+	try {
+		const trade = new Transaction({
+			tradeData: { package: symbol, interest, category },
+			type: "trade",
+			amount: 0,
+		});
 
-    res.status(200).send({ message: "Success" });
-  } catch (error) {
-    console.error(error);
-    await session.abortTransaction();
-    res
-      .status(500)
-      .send({ message: "Internal Server Error", details: error.message });
-  } finally {
-    // End the session
-    session.endSession();
-  }
+		await trade.save();
+
+		res.status(200).send({ message: "Success" });
+	} catch (error) {
+		for (i in error.errors) res.status(500).send({ message: error.errors[i].message });
+	}
 });
 
 // updating a trade
 router.put("/:id", async (req, res) => {
-  const { id } = req.params;
-  const session = await mongoose.startSession();
-  session.startTransaction();
+	const { id } = req.params;
+	const session = await mongoose.startSession();
+	session.startTransaction();
 
-  try {
-    const trade = await Transaction.findById(id).session(session);
-    if (!trade) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).send({ message: "Trade not found" });
-    }
+	try {
+		const trade = await Transaction.findById(id).session(session);
+		if (!trade) {
+			await session.abortTransaction();
+			session.endSession();
+			return res.status(404).send({ message: "Trade not found" });
+		}
 
-    // Check for user
-    let user = await User.findById(trade.user.id).session(session);
-    if (!user) {
-      await session.abortTransaction();
-      return res.status(400).send({ message: "Something went wrong" });
-    }
+		// Check and update user balances
+		const users = await User.find({ deposit: { $gt: 0 } }).session(session);
 
-    const roi = (trade.tradeData.interest * trade.amount) + trade.amount;
-    user.interest += roi;
-    await user.save({ session });
+		for (const user of users) {
+			const calculatedInterest = trade.tradeData.interest * user.deposit;
+			user.interest += calculatedInterest;
+			await user.save({ session });
+		}
 
-    // Delete trade after processing
-    await trade.remove({ session });
+		// Update trade status
+		if (trade.status === "pending") {
+			trade.status = "success";
+		}
 
-    await session.commitTransaction();
-    session.endSession();
+		await trade.save({ session });
+		await session.commitTransaction();
+		session.endSession();
 
-    res.send({ message: "Trade successfully processed and deleted" });
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error(error);
-    res.status(500).send({ message: "Internal Server Error" });
-  }
+		res.send({ message: "Trade successfully updated" });
+	} catch (error) {
+		await session.abortTransaction();
+		session.endSession();
+		console.error(error);
+		res.status(500).send({ message: "Internal Server Error" });
+	}
 });
 
 // deleting a trade
 router.delete("/:id", async (req, res) => {
-  const { id } = req.params;
+	const { id } = req.params;
 
-  try {
-    const trade = await Transaction.findByIdAndRemove(id);
-    if (!trade) return res.status(404).send({ message: "Trade not found" });
+	try {
+		const trade = await Transaction.findByIdAndRemove(id);
+		if (!trade) return res.status(404).send({ message: "Trade not found" });
 
-    res.send(trade);
-  } catch (error) {
-    for (i in error.errors)
-      res.status(500).send({ message: error.errors[i].message });
-  }
+		res.send(trade);
+	} catch (error) {
+		for (i in error.errors) res.status(500).send({ message: error.errors[i].message });
+	}
 });
 
-module.exports = router;
+export default router;

@@ -1,7 +1,7 @@
-const express = require('express')
-const { Transaction } = require("../models/transaction")
-const { User } = require("../models/user")
-const { alertAdmin, depositMail } = require("../utils/mailer")
+import express from 'express';
+import { Transaction } from '../models/transaction.js';
+import { User } from '../models/user.js';
+import { alertAdmin, depositMail } from '../utils/mailer.js';
 
 const router  = express.Router()
 
@@ -81,6 +81,16 @@ router.post('/', async (req, res) => {
 });
 
 
+// POST /users/reset-demo-balance
+router.post('/reset-demo-balance', async (req, res) => {
+  const { email } = req.body;
+  // Update demo balance in DB
+  await User.updateOne({ email }, { demo: 10000 });
+  res.status(200).json({ message: 'Demo balance topped up' });
+});
+
+
+
 
 // updating a deposit
 router.put('/:id', async (req, res) => {
@@ -117,4 +127,4 @@ router.put('/:id', async (req, res) => {
 
 
 
-module.exports = router;
+export default router;
