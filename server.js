@@ -37,8 +37,8 @@ mongoose
 	.catch((e) => console.error("Error connecting to MongoDB:", e));
 
 const allowedOrigins = [
-	"https://difitrades.com",
 	"https://www.difitrades.com",
+	"https://difitrades.com",
 	"https://difitrades-client.vercel.app",
 	"http://localhost:5173",
 ];
