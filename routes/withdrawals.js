@@ -106,7 +106,20 @@ router.put("/:id", async (req, res) => {
 		withdrawal.status = status;
 
 		if (status === "success") {
-			user.deposit -= amount;
+			const totalAvailable = user.deposit + user.interest;
+
+			if (amount > totalAvailable) {
+				throw new Error("Insufficient funds");
+			}
+
+			if (amount <= user.deposit) {
+				user.deposit -= amount;
+			} else {
+				const remaining = amount - user.deposit;
+				user.deposit = 0;
+				user.interest -= remaining;
+			}
+
 			user.withdraw += amount;
 		}
 
