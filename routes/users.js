@@ -108,13 +108,16 @@ router.post("/login", async (req, res) => {
 		});
 		if (!user) return res.status(400).send({ message: "user not found" });
 
-		const validatePassword = bcrypt.compare(password, user.password);
-		if (!validatePassword) return res.status(400).send({ message: "Invalid password" });
+		if (!user.password) {
+			return res.status(400).send({ message: "This user signed up via Google. Use Google login." });
+		}
+
+		const isMatch = await bcrypt.compare(password, user.password);
+		if (!isMatch) return res.status(400).send({ message: "Invalid password" });
 
 		res.send({ message: "success", user });
-	} catch (error) {
+	} catch (e) {
 		for (i in e.errors) res.status(500).send({ message: e.errors[i].message });
-		console.log(e.errors[0].message);
 	}
 });
 
