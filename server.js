@@ -40,7 +40,8 @@ const allowedOrigins = [
 	"https://www.difitrades.com",
 	"https://difitrades.com",
 	"https://difitrades-client.vercel.app",
-	"http://localhost:5173",
+  "http://localhost:5173",
+  "http://localhost:3000",
 ];
 
 const corsOptions = {
